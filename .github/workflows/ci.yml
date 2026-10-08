@@ -3,6 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -14,9 +15,13 @@ jobs:
       - run: pip install -e ".[test]"
       - run: pytest
   docker:
-    # main: published as ghcr.io/frane/elli-eebus-proxy (amd64, arm64); pull requests: build only
+    # main: published as ghcr.io/frane/elli-eebus-proxy and, with the secrets DOCKERHUB_USERNAME
+    # and DOCKERHUB_TOKEN, as <user>/elli-eebus-proxy on Docker Hub (amd64, arm64).
+    # Pull requests: build only.
     needs: test
     runs-on: ubuntu-latest
+    env:
+      HUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
     permissions:
       contents: read
       packages: write
@@ -25,15 +30,22 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request' && env.HUB_USER != ''
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: |
+            ghcr.io/${{ github.repository }}
+            name=docker.io/${{ env.HUB_USER || 'unset' }}/elli-eebus-proxy,enable=${{ env.HUB_USER != '' }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha
@@ -41,6 +53,6 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
