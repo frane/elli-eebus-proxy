@@ -1,0 +1,15 @@
+services:
+  elli-eebus-proxy:
+    build: https://github.com/frane/elli-eebus-proxy.git
+    image: elli-eebus-proxy
+    container_name: elli-eebus-proxy
+    network_mode: host  # EEBUS finds devices via mDNS: needs the host network
+    restart: unless-stopped
+    volumes:
+      - ./data:/data  # keep this: it holds the pairings
+    environment:
+      ELLI_SKI: ""      # SKI of the Elli (Elli web UI or: docker compose run --rm elli-eebus-proxy discover)
+      ELLI_HOST: ""     # optional: IP of the Elli, else found via mDNS
+      HEMS: ""          # SKI of the energy manager (e.g. Solar Manager gateway), several comma separated
+      SNIFF: "1"        # 1: only log what the energy manager sends; 0: pass it on to the Elli
+      TZ: Europe/Berlin
