@@ -33,12 +33,12 @@ Energiemanager ──EEBUS──► elli-eebus-proxy ──EEBUS──► Elli
 
 Du brauchst einen dauerhaft laufenden Linux-Rechner im selben Netz wie Elli und Energiemanager, z. B. einen Raspberry Pi mit 64-Bit-OS, ein NAS oder den Home-Assistant-Host. Er muss 24/7 laufen. Docker braucht **Host-Networking** für mDNS.
 
-1. Image direkt von GitHub bauen. Registry und Klonen sind nicht nötig:
+1. Compose-Datei und Image holen (`ghcr.io/frane/elli-eebus-proxy`, amd64 und arm64):
 
    ```bash
    mkdir elli-eebus-proxy && cd elli-eebus-proxy
    curl -O https://raw.githubusercontent.com/frane/elli-eebus-proxy/main/docker-compose.yml
-   docker compose build
+   docker compose pull
    ```
 
 2. SKIs der Elli und des Energiemanagers finden:
@@ -52,7 +52,15 @@ Du brauchst einen dauerhaft laufenden Linux-Rechner im selben Netz wie Elli und 
 5. **Energiemanager koppeln:** Dort die Elli entfernen und die „Elli“ hinzufügen, die der Proxy ankündigt. Prüfen, ob ihre SKI zu `docker compose run --rm elli-eebus-proxy ski` passt.
 6. **Mitschneiden:** Das Log zeigt jeden Schreibbefehl des Energiemanagers, `data/traffic.jsonl` den kompletten EEBUS-Verkehr. Wenn alles passt, `SNIFF: "0"` setzen und `docker compose up -d` ausführen.
 
-Zum Aktualisieren `docker compose build --pull && docker compose up -d` ausführen. Die Kopplungen in `./data` bleiben erhalten.
+Zum Aktualisieren `docker compose pull && docker compose up -d` ausführen. Die Kopplungen in `./data` bleiben erhalten.
+
+**Synology (Container Manager):**
+
+1. Ordner `docker/elli-eebus-proxy` anlegen.
+2. `docker-compose.yml` hineinlegen und die Werte eintragen.
+3. Unter **Projekt → Erstellen** diesen Ordner wählen.
+
+Das Log findest du unter **Container → Protokoll**.
 
 ## Konfiguration
 

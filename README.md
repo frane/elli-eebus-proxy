@@ -33,12 +33,12 @@ Energy manager ──EEBUS──► elli-eebus-proxy ──EEBUS──► Elli
 
 You need an always-on Linux machine in the same network as the Elli and the energy manager (Raspberry Pi with 64-bit OS, NAS, Home Assistant host). It must run 24/7. Docker needs **host networking** for mDNS.
 
-1. Build the image straight from GitHub. No registry and no clone are needed:
+1. Get the compose file and the image (`ghcr.io/frane/elli-eebus-proxy`, amd64 and arm64):
 
    ```bash
    mkdir elli-eebus-proxy && cd elli-eebus-proxy
    curl -O https://raw.githubusercontent.com/frane/elli-eebus-proxy/main/docker-compose.yml
-   docker compose build
+   docker compose pull
    ```
 
 2. Find the SKIs of the Elli and the energy manager:
@@ -52,7 +52,15 @@ You need an always-on Linux machine in the same network as the Elli and the ener
 5. **Pair the energy manager:** remove the Elli in the energy manager and add the "Elli" the proxy announces. Check that its SKI matches the one from `docker compose run --rm elli-eebus-proxy ski`.
 6. **Sniff:** the log shows every write of the energy manager, and `data/traffic.jsonl` holds the complete EEBUS traffic. When everything looks right, set `SNIFF: "0"` and run `docker compose up -d`.
 
-To update, run `docker compose build --pull && docker compose up -d`. The pairings in `./data` stay.
+To update, run `docker compose pull && docker compose up -d`. The pairings in `./data` stay.
+
+**Synology (Container Manager):**
+
+1. Create the folder `docker/elli-eebus-proxy`.
+2. Put `docker-compose.yml` into it and fill in the values.
+3. Go to **Project → Create** and pick that folder.
+
+Use **Container → Log** for the log.
 
 ## Configuration
 
