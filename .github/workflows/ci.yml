@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  release:
+    types: [published]
   workflow_dispatch:
 jobs:
   test:
@@ -15,7 +17,7 @@ jobs:
       - run: pip install -e ".[test]"
       - run: pytest
   docker:
-    # main: published as ghcr.io/frane/elli-eebus-proxy and, with the secrets DOCKERHUB_USERNAME
+    # main and releases (tags 0.1.0, 0.1): published as ghcr.io/frane/elli-eebus-proxy and, with the secrets DOCKERHUB_USERNAME
     # and DOCKERHUB_TOKEN, as <user>/elli-eebus-proxy on Docker Hub (amd64, arm64).
     # Pull requests: build only.
     needs: test
@@ -48,6 +50,8 @@ jobs:
             name=docker.io/${{ env.HUB_USER || 'unset' }}/elli-eebus-proxy,enable=${{ env.HUB_USER != '' }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=sha
       - uses: docker/build-push-action@v6
         with:

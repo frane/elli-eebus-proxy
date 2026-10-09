@@ -54,7 +54,7 @@ from pyeebus.spine.model import (
     utcnow,
 )
 from pyeebus.spine.update import update_data
-from pyeebus.usecases import LPC, OSCEV
+from pyeebus.usecases import LPC
 
 from .arbiter import LimitArbiter
 from .hems import HemsSide
@@ -176,11 +176,6 @@ class Proxy:
             cem = self.elli.service.entities[0]
             for feature_type in MIRROR_CLIENT_FEATURES:
                 cem.add_feature(feature_type, Role.CLIENT)
-            # Announce the EV charging services energy managers like Solar Manager offer: without
-            # them the Elli reports "service for self-consumption charging / cost-optimized
-            # charging not available" (0x401029, 0x40102A).
-            OSCEV(cem).setup()
-            cem.add_use_case("CEM", "coordinatedEvCharging", "1.0.1", [1, 2, 3, 4, 5, 6, 7, 8])
             self.elli.service.device.subscribe_events(self._on_elli_event)
             self.elli.service.trace = self._trace("elli")
             self.elli.add_listener(self._on_elli_status)
@@ -626,10 +621,11 @@ class Proxy:
                 if self._clamp_to_min or not status.min_power or desired >= status.min_power:
                     raise
                 # Elli Charger 2: "Write failed" for limits below its minimum charging power (0 W
-                # included), so it can't be paused over EEBUS. Use the minimum from now on.
+                # included) if it doesn't see the EV charging services (elli-eebus announces them).
+                # Better the minimum than no limit at all.
                 self._clamp_to_min = True
-                _LOGGER.warning("the wallbox refuses limits below its minimum of %.0f W (it can't be paused "
-                                "over EEBUS): using %.0f W instead", status.min_power, status.min_power)
+                _LOGGER.warning("the wallbox refuses limits below its minimum of %.0f W: using %.0f W instead",
+                                status.min_power, status.min_power)
                 self._last_write = (status.min_power, time.monotonic())
                 await self.elli.set_power_limit(status.min_power)
 
