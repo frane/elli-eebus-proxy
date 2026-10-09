@@ -15,6 +15,8 @@ Die aktuelle Firmware der Elli Charger 2 hat zwei EEBUS-Fehler (LPC, Leistungsbe
 
 Energiemanager, die sich an die Spezifikation halten, können die Wallbox deshalb nicht begrenzen.
 
+Außerdem bietet sie kein EV-Objekt mehr an. Energiemanager wie Solar Manager steuern Wallboxen aber nur über das EV, mit Stromlimits je Phase (OPEV, OSCEV). Sie haben also nichts zu steuern.
+
 ## So funktioniert es
 
 ```
@@ -27,6 +29,7 @@ Energiemanager ──EEBUS──► elli-eebus-proxy ──EEBUS──► Elli
 - **Leistungslimits** bestätigt der Proxy dem Energiemanager und schickt sie so an die Elli, wie die Firmware sie annimmt: ohne Dauer (die Zeit führt der Proxy selbst) und aufgehoben mit *inaktiv, 0 W*. Bei mehreren Energiemanagern gilt das niedrigste Limit.
 - **Failsafe:** Die Failsafe-Einstellungen gehen an die Elli. Fällt ein Energiemanager weg (getrennt oder 2 Minuten ohne Heartbeat), setzt der Proxy das Failsafe-Limit für die Failsafe-Dauer, wie LPC es verlangt. Fällt der Proxy selbst aus, greift die Elli auf dasselbe Failsafe zurück.
 - **Elli offline:** Der Proxy stoppt seinen Heartbeat, damit Energiemanager es merken.
+- **Virtuelles EV:** Hat die Wallbox kein EV-Objekt (Elli Charger 2), zeigt der Proxy eins. Stromlimits darauf (A je Phase) gehen als Leistungslimit an die Elli (A × 230 V × Phasen). Strom und Leistung je Phase berechnet er aus der Gesamtleistung der Elli. Die Elli meldet nicht, ob ein Auto angesteckt ist, deshalb ist das EV immer da.
 - **Sniff-Modus:** Der Proxy protokolliert nur, was der Energiemanager schickt (`traffic.jsonl`), und gibt nichts weiter. Damit anfangen.
 
 ## Einrichtung mit Docker
@@ -73,6 +76,7 @@ Das Log findest du unter **Container → Protokoll**.
 | `SNIFF` | `--sniff` | 0 | 1: nur protokollieren, nichts an die Elli weitergeben |
 | `PORT` | `--port` | 4711 | SHIP-Port Richtung Energiemanager |
 | `UPSTREAM_PORT` | `--upstream-port` | 4712 | SHIP-Port Richtung Elli |
+| `VIRTUAL_EV` | `--no-virtual-ev` | 1 | EV-Objekt zeigen, wenn die Wallbox keins hat |
 | `TRAFFIC_LOG` | `--no-traffic-log` | 1 | `traffic.jsonl` schreiben (rotiert, max. 40 MB) |
 | `STATE_DIR` | `--state-dir` | `/data` (Docker), `~/.config/elli-eebus-proxy` | siehe unten |
 | `DEBUG` | `-v` | 0 | Debug-Logging |

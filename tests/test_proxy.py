@@ -196,3 +196,32 @@ async def test_sniff_mode_with_wallbox_shows_its_data_but_passes_nothing_on(sim,
     finally:
         await hems.stop()
         await proxy.stop()
+
+
+async def test_virtual_ev_current_limits_become_a_power_limit(setup):
+    from pyeebus.usecases import PhaseLimit
+
+    sim, proxy, hems = setup
+    ev = await wait_for(lambda: hems._ev())
+    assert hems.status().vehicle_connected
+    sim.set_demand(9000)
+    await wait_for(lambda: hems._evcem.current_per_phase(ev) == [13.0, 13.0, 13.0])
+    # OPEV, as Solar Manager sends it for "max. 10 A": 10 A x 230 V x 3 phases
+    await hems._opev.write_load_control_limits(ev, [PhaseLimit(p, 10) for p in "abc"])
+    await wait_for(lambda: sim.limit == (6900, True))
+    await hems._opev.write_load_control_limits(ev, [PhaseLimit(p, 16, is_active=False) for p in "abc"])
+    await wait_for(lambda: sim.limit == (0, False))
+    assert proxy.arbiter.effective() is None
+
+
+async def test_no_virtual_ev_when_disabled(sim, tmp_path):
+    proxy = make_proxy(tmp_path / "proxy", sim)
+    proxy.virtual_ev_enabled = False
+    await proxy.start()
+    hems = await connect_hems(proxy, tmp_path / "hems")
+    try:
+        assert hems._ev() is None
+        assert proxy.hems.device.entity((1, 1)) is None
+    finally:
+        await hems.stop()
+        await proxy.stop()

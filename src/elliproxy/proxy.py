@@ -111,6 +111,7 @@ class Proxy:
         mdns: bool = True,
         bind_host: str | None = None,
         sniff: bool = False,
+        virtual_ev: bool = True,
     ) -> None:
         self.state_dir = Path(state_dir).expanduser()
         self.elli_ski = normalize_ski(elli_ski) if elli_ski else None
@@ -121,6 +122,7 @@ class Proxy:
         self.mdns_enabled = mdns
         self.bind_host = bind_host
         self._sniff = sniff or self.elli_ski is None
+        self.virtual_ev_enabled = virtual_ev
         self.arbiter = LimitArbiter(self.state_dir / "limits.json")
         self.hems_identity = ShipIdentity.load_or_create(self.state_dir / "hems", NAME)
         self.hems_trust = TrustStore.load(self.state_dir / "hems" / "trust.json")
@@ -175,7 +177,7 @@ class Proxy:
                 cem.add_feature(feature_type, Role.CLIENT)
             self.elli.service.device.subscribe_events(self._on_elli_event)
             self.elli.service.trace = self._trace("elli")
-            self.elli.add_listener(lambda _status: self._wake())
+            self.elli.add_listener(self._on_elli_status)
             await self.elli.start()
             _LOGGER.info("as energy manager toward the wallbox: %s, SKI %s (pair it in the Elli web UI)",
                          NAME, self.elli.our_ski)
@@ -256,6 +258,7 @@ class Proxy:
             announce=self.mdns_enabled, discover=self.mdns_enabled, host=self.bind_host)
         self.hems.service.trace = self._trace("hems")
         self.profile = profile
+        self._update_virtual_ev(profile)
         if self.arbiter.limits:
             self._own_lpc_limit()
         for peer in self.peers:
@@ -361,6 +364,7 @@ class Proxy:
             old = self.hems.profile
             if old is not None and (old.structure(), old.use_cases) != (profile.structure(), profile.use_cases):
                 _LOGGER.info("wallbox description changed, updating energy managers")
+                self._update_virtual_ev(profile)
                 self.hems.apply_structure(profile)
             if old is not None and (old.identity != profile.identity or old.device_address != profile.device_address):
                 _LOGGER.warning("wallbox identity differs from the cached one (%s): restart the proxy to apply it",
@@ -405,6 +409,9 @@ class Proxy:
         label = self.hems.label(ski) if self.hems else ski[:8]
         _LOGGER.info("energy manager %s writes %s to %s: %s", label, msg.function, feature,
                      json.dumps(msg.data, separators=(",", ":")))
+        ev = self.hems.virtual_ev if self.hems else None
+        if ev is not None and ev.is_mine(feature):
+            return self._handle_ev_write(feature, msg)
         if self.sniff:
             if msg.function == FN_LIMITS and self._lpc_limit_id(feature) is not None:
                 self._own_lpc_limit()  # keep showing what was written
@@ -472,6 +479,39 @@ class Proxy:
         self._wake()
         return None
 
+    def _handle_ev_write(self, feature: LocalFeature, msg: Message) -> SpineError | None:
+        """Current limits on the virtual EV (OPEV, OSCEV) become a power limit for the wallbox."""
+        if msg.function != FN_LIMITS or self.sniff:
+            return None
+        merged = update_data(FN_LIMITS, feature.get(FN_LIMITS), msg.data, msg.filters) or {}
+        watts = self.hems.virtual_ev.power_limit(merged)
+        ski = msg.device.ski
+        self.arbiter.set(f"{ski}:ev", watts or 0.0, watts is not None)
+        _LOGGER.info("EV current limits of %s: %s", self.hems.label(ski),
+                     f"{watts:.0f} W" if watts is not None else "none")
+        self._wake()
+        return None
+
+    def _update_virtual_ev(self, profile: Profile) -> None:
+        """Show an EV entity if the wallbox has none (Elli Charger 2), remove it if it has one."""
+        if self.hems is None:
+            return
+        has_ev = any(e["type"] == "EV" for e in profile.entities)
+        evse = next((e for e in profile.entities if e["type"] == "EVSE"), None)
+        want = self.virtual_ev_enabled and not has_ev and evse is not None
+        if want and self.hems.virtual_ev is None:
+            low, high, phases = _current_range(evse)
+            self.hems.add_virtual_ev(evse_address=tuple(evse["address"]), min_current=low, max_current=high,
+                                     phases=phases)
+            _LOGGER.info("showing energy managers an EV (%s phases, %g-%g A): the wallbox has none", phases, low, high)
+        elif not want and self.hems.virtual_ev is not None:
+            self.hems.remove_virtual_ev()
+
+    def _on_elli_status(self, status) -> None:
+        if self.hems is not None and self.hems.virtual_ev is not None:
+            self.hems.virtual_ev.update_power(status.power)
+        self._wake()
+
     def _failsafe(self) -> tuple[float | None, float | None]:
         if self.hems is None:
             return None, None
@@ -497,9 +537,10 @@ class Proxy:
         if self.sniff or what not in ("disconnected", "heartbeat_lost"):
             return
         watts, seconds = self._failsafe()
-        if self.arbiter.lost(ski, watts, seconds):
-            _LOGGER.warning("energy manager %s lost: failsafe limit %s W for %s s", ski[:8], watts, seconds)
-            self._wake()
+        for key in (ski, f"{ski}:ev"):
+            if self.arbiter.lost(key, watts, seconds):
+                _LOGGER.warning("energy manager %s lost: failsafe limit %s W for %s s", ski[:8], watts, seconds)
+                self._wake()
 
     # --- applying the limit to the wallbox ------------------------------------------------------------
 
@@ -590,6 +631,27 @@ class Proxy:
                 TRAFFIC.info(json.dumps({"t": format_datetime(), "side": side, "ski": ski, "dir": direction,
                                          "msg": payload}, separators=(",", ":")))
         return trace
+
+
+def _current_range(evse: dict[str, Any]) -> tuple[float, float, int]:
+    """(min A, max A, phases) from the EVSE's electrical connection data, Elli Charger 2 defaults."""
+    low, high, phases = 6.0, 16.0, 3
+    for f in evse["features"]:
+        if f["type"] != "ElectricalConnection" or f["role"] != Role.SERVER:
+            continue
+        data = f.get("data") or {}
+        for item in as_list((data.get("electricalConnectionDescriptionListData") or {}).get(
+                "electricalConnectionDescriptionData")):
+            if item.get("acConnectedPhases"):
+                phases = int(item["acConnectedPhases"])
+        for item in as_list((data.get("electricalConnectionPermittedValueSetListData") or {}).get(
+                "electricalConnectionPermittedValueSetData")):
+            for value_set in as_list(item.get("permittedValueSet")):
+                for rng in as_list(value_set.get("range")):
+                    lo, hi = scaled_value(rng.get("min")), scaled_value(rng.get("max"))
+                    if lo is not None and hi is not None and hi <= 80:  # amps, not watts
+                        return lo, hi, phases
+    return low, high, phases
 
 
 def _duration(end_time: str | None) -> float | None:

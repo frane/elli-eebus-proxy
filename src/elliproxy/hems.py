@@ -24,6 +24,7 @@ from pyeebus.ship import RemoteAbortError, TrustStore, normalize_ski
 from pyeebus.spine import Change, Event, EventType, LocalEntity, LocalFeature, Message, Role, SpineError, spawn
 from pyeebus.spine.device import FN_HEARTBEAT, FN_MANUFACTURER, FN_USE_CASE
 
+from .ev import VirtualEV
 from .profile import Profile
 
 _LOGGER = logging.getLogger(__name__)
@@ -70,6 +71,8 @@ class HemsSide:
         """(entity, feature, function) the proxy keeps itself instead of mirroring the wallbox."""
         self.managers: dict[str, EnergyManager] = {}
         self.profile: Profile | None = None
+        self.virtual_ev: VirtualEV | None = None
+        """An EV entity the wallbox doesn't have, for energy managers that need one (see ev.py)."""
         self._heartbeat_on = True
         self._started = False
         self._tasks: list[asyncio.Task] = []
@@ -150,6 +153,8 @@ class HemsSide:
         for address, entity in new.items():
             if device.entity(address) is None:
                 self._add_entity(entity, announce)
+        if self.virtual_ev is not None:
+            self.virtual_ev.ensure(announce)
         self._set_use_cases(profile)
         self.profile = profile
         if self._started:
@@ -176,7 +181,8 @@ class HemsSide:
     def _set_use_cases(self, profile: Profile) -> None:
         device = self.device
         infos = []
-        for uc in profile.use_cases:
+        extra = self.virtual_ev.use_cases() if self.virtual_ev is not None else []
+        for uc in [*profile.use_cases, *extra]:
             entity = list(uc.get("entity") or [])
             if entity and device.entity(entity) is None:
                 continue
@@ -203,6 +209,21 @@ class HemsSide:
             return
         if feature.data.get(function) != data:
             feature.set_data(function, data)
+
+    def add_virtual_ev(self, **options: Any) -> VirtualEV:
+        """Show energy managers an EV entity under the EVSE (the wallbox has none)."""
+        self.virtual_ev = VirtualEV(self, **options)
+        self.virtual_ev.ensure(announce=self._started)
+        if self.profile is not None:
+            self._set_use_cases(self.profile)
+        return self.virtual_ev
+
+    def remove_virtual_ev(self) -> None:
+        ev, self.virtual_ev = self.virtual_ev, None
+        if ev is not None and ev.entity is not None and ev.entity in self.device.entities:
+            self.device.remove_entity(ev.entity)
+        if self.profile is not None:
+            self._set_use_cases(self.profile)
 
     def mirror_manufacturer(self, data: Any) -> None:
         feature = self.device.entity((0,)).feature("DeviceClassification", Role.SERVER)

@@ -75,6 +75,8 @@ def main(argv: list[str] | None = None) -> int:
     run = sub.add_parser("run", help="run the proxy (default)")
     run.add_argument("--elli-ski", default=_env("ELLI_SKI"),
                      help="SKI of the wallbox; without it: sniff mode with the built-in Elli Charger 2 [ELLI_SKI]")
+    run.add_argument("--no-virtual-ev", action="store_true", default=not _bool(_env("VIRTUAL_EV"), True),
+                     help="don't show energy managers an EV entity when the wallbox has none [VIRTUAL_EV=0]")
     run.add_argument("--sniff", action="store_true", default=_bool(_env("SNIFF"), False),
                      help="only log what energy managers send, pass nothing on to the wallbox [SNIFF=1]")
     run.add_argument("--elli-host", default=_env("ELLI_HOST"), help="wallbox address; default: mDNS [ELLI_HOST]")
@@ -111,7 +113,8 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"invalid wallbox SKI: {args.elli_ski}")
     proxy = Proxy(args.state_dir, elli_ski=args.elli_ski, elli_host=args.elli_host, elli_port=args.elli_port,
                   hems=_peers(args.hems), port=args.port, upstream_port=args.upstream_port, serial=args.serial,
-                  traffic_log=not args.no_traffic_log, sniff=args.sniff)
+                  traffic_log=not args.no_traffic_log, sniff=args.sniff,
+                  virtual_ev=not args.no_virtual_ev)
     try:
         asyncio.run(proxy.run_forever())
     except KeyboardInterrupt:

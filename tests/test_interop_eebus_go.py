@@ -109,3 +109,30 @@ async def test_eebus_go_energy_guard_controls_spine_go_wallbox_through_the_proxy
             await hems.stop()
         await proxy.stop()
         await wallbox.stop()
+
+
+async def test_eebus_go_cem_controls_the_wallbox_through_the_virtual_ev(tmp_path):
+    """eebus-go CEM with the EV use cases (like Solar Manager) -> proxy -> spine-go LPC wallbox."""
+    upstream = Identity.load_or_create(tmp_path / "elli", NAME)
+    wallbox_port = free_port()
+    wallbox, wallbox_ski = await start_harness("lpc", upstream.ski, wallbox_port)
+    proxy = Proxy(tmp_path, elli_ski=wallbox_ski, elli_host="127.0.0.1", elli_port=wallbox_port,
+                  port=0, upstream_port=0, mdns=False, bind_host="127.0.0.1")
+    hems = None
+    try:
+        await proxy.start()
+        await asyncio.wait_for(proxy.hems_ready.wait(), 10)
+        hems_port = free_port()
+        hems, hems_ski = await start_harness("cem", proxy.hems_ski, hems_port)
+        proxy.trust_hems(hems_ski, host="127.0.0.1", port=hems_port)
+        await hems.expect("CONNECTED")
+        # the harness writes 10 A per phase as soon as it sees the EV's limits
+        assert await hems.expect("WRITE_RESULT") == "WRITE_RESULT 0"
+        assert await wallbox.expect("LPC_LIMIT") == "LPC_LIMIT 6900 true 0s"
+        await wallbox.send("power 6900")
+        await hems.expect("EVCEM_CURRENT 10,10,10")
+    finally:
+        if hems is not None:
+            await hems.stop()
+        await proxy.stop()
+        await wallbox.stop()
