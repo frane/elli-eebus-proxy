@@ -225,3 +225,27 @@ async def test_no_virtual_ev_when_disabled(sim, tmp_path):
     finally:
         await hems.stop()
         await proxy.stop()
+
+
+async def test_limit_below_the_minimum_falls_back_to_the_minimum(setup):
+    from pyeebus.spine import SpineError
+    from pyeebus.spine.model import scaled_value
+
+    sim, proxy, hems = setup
+    feature = sim.evse.feature("LoadControl", Role.SERVER)
+    approve = feature.write_approval
+
+    def like_the_elli(msg):  # the real Elli: "Write failed" for active limits below 4116.6 W
+        for item in (msg.data or {}).get("loadControlLimitData") or []:
+            if item.get("isLimitActive") and (scaled_value(item.get("value")) or 0) < 4116:
+                return SpineError(1, "Write failed")
+        return approve(msg)
+
+    feature.write_approval = like_the_elli
+    await wait_for(lambda: hems.status().min_power is not None)
+    ev = await wait_for(lambda: hems._ev())
+    from pyeebus.usecases import PhaseLimit
+
+    await hems._opev.write_load_control_limits(ev, [PhaseLimit(p, 0) for p in "abc"])  # "pause"
+    await wait_for(lambda: sim.limit == (4140, True))
+    assert proxy._clamp_to_min

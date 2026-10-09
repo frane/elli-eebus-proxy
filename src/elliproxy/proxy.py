@@ -139,6 +139,7 @@ class Proxy:
         self._deadline_handle: asyncio.TimerHandle | None = None
         self._last_write: tuple[float | None, float] | None = None  # (value, monotonic time)
         self._limit_writer: str | None = None
+        self._clamp_to_min = False  # the wallbox refused a limit below its minimum power
         self._tasks: list[asyncio.Task] = []
         self._profile_dirty = False
         self._traffic_handler: logging.Handler | None = None
@@ -596,6 +597,8 @@ class Proxy:
             return  # limits not read yet; the status update wakes us again
         if desired is not None and status.max_power and desired >= status.max_power:
             desired = None  # at or above the maximum: no limit
+        if desired is not None and self._clamp_to_min and status.min_power and desired < status.min_power:
+            desired = status.min_power  # the Elli can't pause over EEBUS: charge as little as it can
         if desired is None:
             done = not status.power_limit_active
         else:
@@ -612,7 +615,18 @@ class Proxy:
             await self.elli.clear_power_limit()
         else:
             _LOGGER.info("setting the wallbox limit to %.0f W", desired)
-            await self.elli.set_power_limit(desired)
+            try:
+                await self.elli.set_power_limit(desired)
+            except SpineError:
+                if self._clamp_to_min or not status.min_power or desired >= status.min_power:
+                    raise
+                # Elli Charger 2: "Write failed" for limits below its minimum charging power (0 W
+                # included), so it can't be paused over EEBUS. Use the minimum from now on.
+                self._clamp_to_min = True
+                _LOGGER.warning("the wallbox refuses limits below its minimum of %.0f W (it can't be paused "
+                                "over EEBUS): using %.0f W instead", status.min_power, status.min_power)
+                self._last_write = (status.min_power, time.monotonic())
+                await self.elli.set_power_limit(status.min_power)
 
     # --- traffic log ------------------------------------------------------------------------------------
 
