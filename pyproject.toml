@@ -11,7 +11,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Frane Bandov" }]
 requires-python = ">=3.11"
-dependencies = ["elli-eebus@https://github.com/frane/elli-eebus/archive/b03ad9a37d8fb4c1de896b05e189ccda32e7388e.zip"]
+dependencies = ["elli-eebus@https://github.com/frane/elli-eebus/archive/69d5af56b269d877a9111aa1a2423930c41e0871.zip"]
 keywords = ["elli", "wallbox", "eebus", "hems", "proxy", "solar-manager", "home-assistant"]
 classifiers = [
   "Development Status :: 3 - Alpha",

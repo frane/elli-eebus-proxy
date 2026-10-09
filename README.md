@@ -76,6 +76,7 @@ Use **Container → Log** for the log.
 | `TRAFFIC_LOG` | `--no-traffic-log` | 1 | write `traffic.jsonl` (rotated, max. 40 MB) |
 | `STATE_DIR` | `--state-dir` | `/data` (Docker), `~/.config/elli-eebus-proxy` | see below |
 | `DEBUG` | `-v` | 0 | debug logging |
+| `EEBUS_ANNOUNCE_IP` | – | detected | IP to announce via mDNS, if the NAS/host has several networks |
 
 The state directory holds:
 
