@@ -13,7 +13,7 @@ The current Elli Charger 2 firmware has two EEBUS bugs (LPC, power limitation):
 - a limit with a duration (`timePeriod`) is silently ignored;
 - a limit can only be lifted with *inactive* **and** 0 W; *inactive* with the value kept fails with "Write failed".
 
-Energy managers that follow the specification therefore can't limit the wallbox. On top of that, it offers no EV entity anymore. Energy managers such as Solar Manager control wallboxes only through the EV, with current limits per phase (OPEV, OSCEV), so they have nothing to control.
+Energy managers that follow the specification therefore can't limit the wallbox. On top of that, it offers no EV entity. Energy managers such as Solar Manager control wallboxes only through the EV, with current limits per phase (OPEV, OSCEV), so they have nothing to control.
 
 ## How it works
 

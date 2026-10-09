@@ -15,7 +15,7 @@ Die aktuelle Firmware der Elli Charger 2 hat zwei EEBUS-Fehler (LPC, Leistungsbe
 
 Energiemanager, die sich an die Spezifikation halten, können die Wallbox deshalb nicht begrenzen.
 
-Außerdem bietet sie kein EV-Objekt mehr an. Energiemanager wie Solar Manager steuern Wallboxen aber nur über das EV, mit Stromlimits je Phase (OPEV, OSCEV). Sie haben also nichts zu steuern.
+Außerdem bietet sie kein EV-Objekt an. Energiemanager wie Solar Manager steuern Wallboxen aber nur über das EV, mit Stromlimits je Phase (OPEV, OSCEV). Sie haben also nichts zu steuern.
 
 ## So funktioniert es
 
