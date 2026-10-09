@@ -54,7 +54,7 @@ from pyeebus.spine.model import (
     utcnow,
 )
 from pyeebus.spine.update import update_data
-from pyeebus.usecases import LPC
+from pyeebus.usecases import LPC, OSCEV
 
 from .arbiter import LimitArbiter
 from .hems import HemsSide
@@ -176,6 +176,11 @@ class Proxy:
             cem = self.elli.service.entities[0]
             for feature_type in MIRROR_CLIENT_FEATURES:
                 cem.add_feature(feature_type, Role.CLIENT)
+            # Announce the EV charging services energy managers like Solar Manager offer: without
+            # them the Elli reports "service for self-consumption charging / cost-optimized
+            # charging not available" (0x401029, 0x40102A).
+            OSCEV(cem).setup()
+            cem.add_use_case("CEM", "coordinatedEvCharging", "1.0.1", [1, 2, 3, 4, 5, 6, 7, 8])
             self.elli.service.device.subscribe_events(self._on_elli_event)
             self.elli.service.trace = self._trace("elli")
             self.elli.add_listener(self._on_elli_status)
