@@ -1,6 +1,6 @@
 services:
   elli-eebus-proxy:
-    image: ghcr.io/frane/elli-eebus-proxy:latest
+    image: fbandov/elli-eebus-proxy:latest
     container_name: elli-eebus-proxy
     network_mode: host  # EEBUS finds devices via mDNS: needs the host network
     restart: unless-stopped

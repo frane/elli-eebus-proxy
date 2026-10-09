@@ -33,7 +33,7 @@ Energiemanager ──EEBUS──► elli-eebus-proxy ──EEBUS──► Elli
 
 Du brauchst einen dauerhaft laufenden Linux-Rechner im selben Netz wie Elli und Energiemanager, z. B. einen Raspberry Pi mit 64-Bit-OS, ein NAS oder den Home-Assistant-Host. Er muss 24/7 laufen. Docker braucht **Host-Networking** für mDNS.
 
-1. Compose-Datei und Image holen (`ghcr.io/frane/elli-eebus-proxy`, amd64 und arm64):
+1. Compose-Datei und Image holen (Docker Hub `fbandov/elli-eebus-proxy`, auch `ghcr.io/frane/elli-eebus-proxy`; amd64 und arm64):
 
    ```bash
    mkdir elli-eebus-proxy && cd elli-eebus-proxy
