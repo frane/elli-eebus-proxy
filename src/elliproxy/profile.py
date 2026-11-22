@@ -83,6 +83,10 @@ class Profile:
             (f["id"], f["type"], f["role"], tuple(sorted((fn, tuple(ops)) for fn, ops in f["functions"].items())))
             for f in entity["features"]))
 
+    def has_data(self) -> bool:
+        """Whether the wallbox's data was saved too (an early save may hold only the structure)."""
+        return any(f.get("data") for e in self.entities for f in e["features"] if f["role"] == Role.SERVER)
+
     def structure(self) -> tuple:
         """Entities and features without data: if this changes, the HEMS must be told."""
         return tuple(self.entity_structure(e) for e in self.entities)

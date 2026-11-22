@@ -74,6 +74,7 @@ MIRROR_CLIENT_FEATURES = ("Bill", "DeviceClassification", "DeviceConfiguration",
                           "Measurement", "Setpoint", "TimeSeries")
 RESEND_AFTER = 10.0  # s: don't repeat the same write while the wallbox has not reported it yet
 PROFILE_SAVE_INTERVAL = 300.0
+READ_WAIT = 10.0  # s to wait for the wallbox's data before describing new entities to energy managers
 MDNS_WAIT = 5.0  # s to wait for the wallbox's mDNS announcement before announcing ourselves
 
 
@@ -136,6 +137,8 @@ class Proxy:
         self._mdns: ShipMdns | None = None
         self._elli_service: ShipService | None = None
         self._sync_lock = asyncio.Lock()
+        self._reads: set[asyncio.Task] = set()
+        """Initial reads of wallbox entities still running (see _sync)."""
         self._sync_handle: asyncio.TimerHandle | None = None
         self._wake_event = asyncio.Event()
         self._deadline_handle: asyncio.TimerHandle | None = None
@@ -186,6 +189,9 @@ class Proxy:
                          NAME, self.elli.our_ski)
 
         cached = Profile.load(self._profile_path)
+        if cached is not None and self.elli_ski and not cached.has_data():
+            _LOGGER.info("%s holds no wallbox data: waiting for the wallbox", self._profile_path.name)
+            cached = None  # energy managers would read empty descriptions and keep them
         if self.elli_ski is None:
             profile = cached or Profile.builtin(self.serial)
             await self._start_hems(profile)
@@ -315,7 +321,9 @@ class Proxy:
                     self.hems.set_heartbeat(False)
         elif event.type == EventType.ENTITY:
             if event.change == Change.ADD and event.entity is not None:
-                self._read_entity(event.entity)
+                task = spawn(self._read_entity(event.entity))
+                self._reads.add(task)
+                task.add_done_callback(self._reads.discard)
             self._schedule_sync()
         elif event.type == EventType.DATA and event.classifier in (CmdClassifier.REPLY, CmdClassifier.NOTIFY):
             self._profile_dirty = True
@@ -329,9 +337,10 @@ class Proxy:
                 else:
                     self.hems.mirror(entity, event.feature.id, event.function, event.data)
 
-    def _read_entity(self, entity: RemoteEntity) -> None:
+    async def _read_entity(self, entity: RemoteEntity) -> None:
         """Subscribe to and read everything the wallbox offers on this entity."""
         cem = self.elli.service.entities[0]
+        reads = []
         for remote in entity.features:
             if remote.role != Role.SERVER:
                 continue
@@ -343,7 +352,9 @@ class Proxy:
                 spawn(_quietly(local.subscribe(remote)))
             for function, ops in remote.operations.items():
                 if ops.read:
-                    local.read(remote, function)
+                    reads.append(_quietly(local.request(remote, function)))
+        if reads:
+            await asyncio.gather(*reads)
 
     def _schedule_sync(self) -> None:
         if self._sync_handle is None:
@@ -354,6 +365,12 @@ class Proxy:
         """Bring the energy managers' view in line with the wallbox's description."""
         self._sync_handle = None
         async with self._sync_lock:
+            if self._reads:
+                # Describe new entities to energy managers only once the wallbox's data is in. An
+                # energy manager reads descriptions once when it sees an entity: an empty answer
+                # (data not read yet) stays, later notifications don't fix it (thermondo/KeoApp
+                # then shows the EV with 0 kW).
+                await asyncio.wait(set(self._reads), timeout=READ_WAIT)
             remote = self.elli._device() if self.elli else None
             if remote is None or not remote.address:
                 return

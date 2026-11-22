@@ -313,3 +313,43 @@ async def test_limit_below_the_minimum_falls_back_to_the_minimum(setup):
     await hems._opev.write_load_control_limits(ev, [PhaseLimit(p, 0) for p in "abc"])  # "pause"
     await wait_for(lambda: sim.limit == (4140, True))
     assert proxy._clamp_to_min
+
+
+def _server_data(device, entities):
+    return {(e.entity, f.id): sorted(fn for fn, v in f.data.items() if v)
+            for e in entities if e.entity != (0,) for f in e.features if f.role == Role.SERVER}
+
+
+async def test_energy_managers_get_the_wallbox_data_from_the_start(sim, tmp_path):
+    """Energy managers read descriptions once: the proxy must not announce the wallbox before its data is in."""
+    proxy = make_proxy(tmp_path / "proxy", sim)
+    await proxy.start()
+    try:
+        await asyncio.wait_for(proxy.hems_ready.wait(), 5)
+        shown = _server_data(proxy.hems.device, proxy.hems.device.entities)
+        wallbox = _server_data(sim.device, sim.device.entities)
+        assert shown and all(shown.get(k) == v for k, v in wallbox.items() if v), (shown, wallbox)
+        assert proxy.profile.has_data()
+    finally:
+        await proxy.stop()
+
+
+async def test_cached_profile_without_data_is_not_used(sim, tmp_path):
+    proxy = make_proxy(tmp_path / "proxy", sim)
+    await proxy.start()
+    await asyncio.wait_for(proxy.hems_ready.wait(), 5)
+    await proxy.stop()
+    path = tmp_path / "proxy" / "profile.json"
+    data = json.loads(path.read_text())
+    for entity in data["entities"]:
+        for feature in entity["features"]:
+            feature["data"] = {}
+    path.write_text(json.dumps(data))
+
+    again = make_proxy(tmp_path / "proxy", sim)
+    await again.start()
+    try:
+        await asyncio.wait_for(again.hems_ready.wait(), 5)
+        assert again.profile.has_data()
+    finally:
+        await again.stop()
