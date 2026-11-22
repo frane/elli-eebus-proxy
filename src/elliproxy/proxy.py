@@ -488,8 +488,10 @@ class Proxy:
         watts = self.hems.virtual_ev.power_limit(merged)
         ski = msg.device.ski
         self.arbiter.set(f"{ski}:ev", watts or 0.0, watts is not None)
-        _LOGGER.info("EV current limits of %s: %s", self.hems.label(ski),
-                     f"{watts:.0f} W" if watts is not None else "none")
+        advice = self.hems.virtual_ev.recommendation(merged)
+        _LOGGER.info("EV current limits of %s: obligation %s, recommendation %s (not applied)",
+                     self.hems.label(ski), f"{watts:.0f} W" if watts is not None else "none",
+                     f"{advice:.0f} W" if advice is not None else "none")
         self._wake()
         return None
 

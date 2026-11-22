@@ -192,13 +192,22 @@ class VirtualEV:
     # --- limits --------------------------------------------------------------------------------
 
     def power_limit(self, data: dict[str, Any]) -> float | None:
-        """The power limit (W) that the current limits in ``data`` stand for, None for none.
+        """The power limit (W) that the obligations (OPEV) in ``data`` stand for, None for none.
 
-        Obligation (OPEV) and recommendation (OSCEV): the lowest active one counts.
+        Recommendations (OSCEV) do not limit: Solar Manager keeps one at 0 A when there is no
+        PV surplus, also in "always charge" mode.
         """
+        currents = self._active_currents(data, recommendation=False)
+        return min(currents) * NOMINAL_VOLTAGE * self.phases if currents else None
+
+    def recommendation(self, data: dict[str, Any]) -> float | None:
+        """The power (W) the recommendations (OSCEV) in ``data`` stand for, None for none."""
+        currents = self._active_currents(data, recommendation=True)
+        return min(currents) * NOMINAL_VOLTAGE * self.phases if currents else None
+
+    def _active_currents(self, data: dict[str, Any], recommendation: bool) -> list[float]:
+        first = 4 if recommendation else 1  # limit ids: 1-3 obligation, 4-6 recommendation (see _build)
+        ids = range(first, first + 3)
         currents = [scaled_value(item.get("value")) for item in as_list(data.get("loadControlLimitData"))
-                    if item.get("isLimitActive") and item.get("value") is not None]
-        currents = [c for c in currents if c is not None]
-        if not currents:
-            return None
-        return min(currents) * NOMINAL_VOLTAGE * self.phases
+                    if item.get("limitId") in ids and item.get("isLimitActive") and item.get("value") is not None]
+        return [c for c in currents if c is not None]

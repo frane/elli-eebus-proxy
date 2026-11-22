@@ -214,6 +214,23 @@ async def test_virtual_ev_current_limits_become_a_power_limit(setup):
     assert proxy.arbiter.effective() is None
 
 
+async def test_virtual_ev_recommendation_does_not_limit(setup):
+    """Solar Manager in "always charge": OSCEV recommendation 0 A, no OPEV obligation."""
+    from pyeebus.usecases import PhaseLimit
+
+    sim, proxy, hems = setup
+    ev = await wait_for(lambda: hems._ev())
+    await hems._oscev.write_load_control_limits(ev, [PhaseLimit(p, 0) for p in "abc"])
+    await wait_for(lambda: proxy.hems.virtual_ev.recommendation(
+        proxy.hems.device.entity((1, 1)).feature("LoadControl", Role.SERVER).get(
+            "loadControlLimitListData")) == 0)
+    assert proxy.arbiter.effective() is None
+    assert sim.limit != (0, True)
+    # an obligation still limits
+    await hems._opev.write_load_control_limits(ev, [PhaseLimit(p, 10) for p in "abc"])
+    await wait_for(lambda: sim.limit == (6900, True))
+
+
 async def test_no_virtual_ev_when_disabled(sim, tmp_path):
     proxy = make_proxy(tmp_path / "proxy", sim)
     proxy.virtual_ev_enabled = False
