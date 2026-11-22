@@ -54,6 +54,15 @@ class LimitArbiter:
         self._save()
         return True
 
+    def drop(self, suffix: str) -> bool:
+        """Remove the limits whose key ends with ``suffix``; True if there were any."""
+        keys = [k for k in self.limits if k.endswith(suffix)]
+        for k in keys:
+            del self.limits[k]
+        if keys:
+            self._save()
+        return bool(keys)
+
     def expire(self) -> list[str]:
         """Drop limits whose time is up; returns the SKIs whose limit ended."""
         now = self.clock()

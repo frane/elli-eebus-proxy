@@ -54,3 +54,14 @@ def test_new_limit_ends_failsafe_and_state_survives_restart(tmp_path):
     assert b.effective() == 3000 and b.limits["a"].failsafe
     b.set("a", 5000, True)
     assert b.effective() == 5000 and not b.limits["a"].failsafe
+
+
+def test_drop_removes_the_ev_limits_only(tmp_path):
+    a = LimitArbiter(tmp_path / "limits.json", clock=Clock())
+    a.set("hems", 7000, True)
+    a.set("hems:ev", 0, True)
+    assert a.effective() == 0
+    assert a.drop(":ev") is True
+    assert a.effective() == 7000
+    assert a.drop(":ev") is False
+    assert "hems:ev" not in LimitArbiter(tmp_path / "limits.json").limits

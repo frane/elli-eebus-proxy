@@ -214,21 +214,37 @@ async def test_virtual_ev_current_limits_become_a_power_limit(setup):
     assert proxy.arbiter.effective() is None
 
 
-async def test_virtual_ev_recommendation_does_not_limit(setup):
-    """Solar Manager in "always charge": OSCEV recommendation 0 A, no OPEV obligation."""
+async def test_ev_limits_end_with_the_ev_session(setup):
+    """Solar Manager wrote 0 A, then stopped writing (e.g. "always charge"): a new EV session must
+    not keep the old 0 A."""
+    import dataclasses
+
     from pyeebus.usecases import PhaseLimit
 
     sim, proxy, hems = setup
     ev = await wait_for(lambda: hems._ev())
-    await hems._oscev.write_load_control_limits(ev, [PhaseLimit(p, 0) for p in "abc"])
-    await wait_for(lambda: proxy.hems.virtual_ev.recommendation(
-        proxy.hems.device.entity((1, 1)).feature("LoadControl", Role.SERVER).get(
-            "loadControlLimitListData")) == 0)
-    assert proxy.arbiter.effective() is None
-    assert sim.limit != (0, True)
-    # an obligation still limits
     await hems._opev.write_load_control_limits(ev, [PhaseLimit(p, 10) for p in "abc"])
     await wait_for(lambda: sim.limit == (6900, True))
+    # the wallbox description changes (e.g. a car is plugged in): the EV is shown anew
+    no_evse = dataclasses.replace(proxy.profile, entities=[e for e in proxy.profile.entities if e["type"] != "EVSE"])
+    proxy._update_virtual_ev(no_evse)
+    proxy._update_virtual_ev(proxy.profile)
+    await wait_for(lambda: sim.limit == (0, False))
+    assert proxy.arbiter.effective() is None
+
+
+async def test_ev_limits_do_not_survive_a_restart(sim, tmp_path):
+    state = tmp_path / "proxy"
+    state.mkdir()
+    (state / "limits.json").write_text(json.dumps(
+        {"abc:ev": {"value": 0.0, "active": True, "until": None, "failsafe": False}}))
+    proxy = make_proxy(state, sim)
+    await proxy.start()
+    try:
+        await wait_for(lambda: proxy.hems is not None and proxy.hems.virtual_ev is not None)
+        assert "abc:ev" not in proxy.arbiter.limits
+    finally:
+        await proxy.stop()
 
 
 async def test_no_virtual_ev_when_disabled(sim, tmp_path):

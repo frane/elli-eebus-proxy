@@ -488,10 +488,8 @@ class Proxy:
         watts = self.hems.virtual_ev.power_limit(merged)
         ski = msg.device.ski
         self.arbiter.set(f"{ski}:ev", watts or 0.0, watts is not None)
-        advice = self.hems.virtual_ev.recommendation(merged)
-        _LOGGER.info("EV current limits of %s: obligation %s, recommendation %s (not applied)",
-                     self.hems.label(ski), f"{watts:.0f} W" if watts is not None else "none",
-                     f"{advice:.0f} W" if advice is not None else "none")
+        _LOGGER.info("EV current limits of %s: %s", self.hems.label(ski),
+                     f"{watts:.0f} W" if watts is not None else "none")
         self._wake()
         return None
 
@@ -507,8 +505,18 @@ class Proxy:
             self.hems.add_virtual_ev(evse_address=tuple(evse["address"]), min_current=low, max_current=high,
                                      phases=phases)
             _LOGGER.info("showing energy managers an EV (%s phases, %g-%g A): the wallbox has none", phases, low, high)
+            self._drop_ev_limits()
         elif not want and self.hems.virtual_ev is not None:
             self.hems.remove_virtual_ev()
+            self._drop_ev_limits()
+
+    def _drop_ev_limits(self) -> None:
+        """EV current limits belong to the EV shown at the time. A new (or no) EV starts without
+        limits, as on a wallbox with a real EV: otherwise a limit the energy manager no longer
+        sends (e.g. 0 A before switching to "always charge") would block charging for good."""
+        if self.arbiter.drop(":ev"):
+            _LOGGER.info("EV current limits dropped: new EV session")
+            self._wake()
 
     def _on_elli_status(self, status) -> None:
         if self.hems is not None and self.hems.virtual_ev is not None:
