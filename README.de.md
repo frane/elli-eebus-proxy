@@ -4,7 +4,11 @@ Ein EEBUS-Proxy zwischen Energiemanagern (HEMS: Solar Manager / thermondo smart,
 
 [English](README.md) · Basiert auf [pyeebus](https://github.com/frane/pyeebus) und [elli-eebus](https://github.com/frane/elli-eebus)
 
-> **Status: 0.1.0, früh.** Im Einsatz mit Solar Manager (thermondo smart) und einer Elli Charger 2: alle Lademodi funktionieren (Pause, Limits, volle Leistung). Noch nicht mit ladendem Auto getestet.
+> **Status: 0.1.0.** Im Einsatz mit Solar Manager (thermondo smart) und einer Elli Charger 2: Pause, Limits, volle Leistung und das Laden eines Autos funktionieren.
+
+## Hintergrund
+
+Ich habe den Proxy für mein eigenes Setup gebaut. Mein Energiemanager thermondo smart (Solar Manager) hat meine Elli Charger 2 über EEBUS gesteuert, bis ein Firmware-Update der Elli das kaputt gemacht hat. Solar Manager sieht den Fehler bei der Wallbox, Elli sagt, die Wallbox sei in Ordnung. Der Proxy sitzt dazwischen, und damit funktioniert es wieder.
 
 ## Warum
 
@@ -15,7 +19,7 @@ Die aktuelle Firmware der Elli Charger 2 hat zwei EEBUS-Fehler (LPC, Leistungsbe
 
 Energiemanager, die sich an die Spezifikation halten, können die Wallbox deshalb nicht begrenzen.
 
-Außerdem bietet sie kein EV-Objekt an. Energiemanager wie Solar Manager steuern Wallboxen aber nur über das EV, mit Stromlimits je Phase (OPEV, OSCEV). Sie haben also nichts zu steuern.
+Außerdem bietet sie ein EV-Objekt nur an, solange ein Auto angesteckt ist. Energiemanager wie Solar Manager steuern Wallboxen aber nur über das EV, mit Stromlimits je Phase (OPEV, OSCEV). Ohne Auto haben sie also nichts zu steuern.
 
 ## So funktioniert es
 
@@ -27,9 +31,11 @@ Energiemanager ──EEBUS──► elli-eebus-proxy ──EEBUS──► Elli
 - **Gegenüber dem Energiemanager** ist der Proxy die Wallbox. Marke, Modell, Seriennummer, Entitäten, Features und Use Cases übernimmt er von der echten Elli. Er hat aber eine eigene SKI. Messwerte und Zustände reicht er live weiter.
 - **Gegenüber der Elli** ist der Proxy der Energiemanager. In der Elli-Weboberfläche wird er als „elli-eebus-proxy“ gekoppelt.
 - **Leistungslimits** bestätigt der Proxy dem Energiemanager und schickt sie so an die Elli, wie die Firmware sie annimmt: ohne Dauer (die Zeit führt der Proxy selbst) und aufgehoben mit *inaktiv, 0 W*. Bei mehreren Energiemanagern gilt das niedrigste Limit.
+- **Mindestleistung:** Limits unter ihrer Mindestladeleistung (etwa 4 kW) lehnt die Elli ab. Der Proxy schickt dann das Minimum.
 - **Failsafe:** Die Failsafe-Einstellungen gehen an die Elli. Fällt ein Energiemanager weg (getrennt oder 2 Minuten ohne Heartbeat), setzt der Proxy das Failsafe-Limit für die Failsafe-Dauer, wie LPC es verlangt. Fällt der Proxy selbst aus, greift die Elli auf dasselbe Failsafe zurück.
 - **Elli offline:** Der Proxy stoppt seinen Heartbeat, damit Energiemanager es merken.
-- **Virtuelles EV:** Hat die Wallbox kein EV-Objekt (Elli Charger 2), zeigt der Proxy eins. Stromlimits darauf (A je Phase) gehen als Leistungslimit an die Elli (A × 230 V × Phasen). Strom und Leistung je Phase berechnet er aus der Gesamtleistung der Elli. Die Elli meldet nicht, ob ein Auto angesteckt ist, deshalb ist das EV immer da.
+- **EV:** Solange ein Auto angesteckt ist, zeigt die Elli Charger 2 ein eigenes EV mit Strom und Leistung je Phase und der geladenen Energie. Der Proxy reicht es weiter, Stromlimits darauf gehen unverändert an die Elli. Sie enden, wenn das Auto abgesteckt wird.
+- **Virtuelles EV:** Ohne Auto zeigt der Proxy ein eigenes EV. Stromlimits darauf (A je Phase) gehen als Leistungslimit an die Elli (A × 230 V × Phasen). Strom und Leistung je Phase berechnet er aus der Gesamtleistung der Elli.
 - **Sniff-Modus:** Der Proxy protokolliert nur, was der Energiemanager schickt (`traffic.jsonl`), und gibt nichts weiter. Damit anfangen.
 
 ## Einrichtung mit Docker
@@ -128,7 +134,7 @@ Dann `sudo systemctl enable --now elli-eebus-proxy` ausführen und mit `journalc
 
 ## Home Assistant parallel
 
-Die EEBUS-Verbindung von [ha-elli-2-modbus](https://github.com/frane/ha-elli-2-modbus) kann sich statt mit der Elli mit dem Proxy verbinden. Dazu die SKI von Home Assistant (wird beim Einrichten der Integration angezeigt) in `HEMS` aufnehmen. Limits von Home Assistant und vom Energiemanager werden zusammengeführt, das niedrigste gilt.
+Die EEBUS-Verbindung von [ha-elli](https://github.com/frane/ha-elli) kann sich statt mit der Elli mit dem Proxy verbinden. Dazu die SKI von Home Assistant (wird beim Einrichten der Integration angezeigt) in `HEMS` aufnehmen. Limits von Home Assistant und vom Energiemanager werden zusammengeführt, das niedrigste gilt.
 
 ## Grenzen
 
