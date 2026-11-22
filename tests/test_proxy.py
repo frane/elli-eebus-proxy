@@ -349,7 +349,8 @@ async def test_cached_profile_without_data_is_not_used(sim, tmp_path):
     again = make_proxy(tmp_path / "proxy", sim)
     await again.start()
     try:
-        await asyncio.wait_for(again.hems_ready.wait(), 5)
+        # the simulator may drop the first connection of the restarted proxy: allow a reconnect
+        await asyncio.wait_for(again.hems_ready.wait(), 30)
         assert again.profile.has_data()
     finally:
         await again.stop()
