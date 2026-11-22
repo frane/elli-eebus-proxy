@@ -247,6 +247,37 @@ async def test_ev_limits_do_not_survive_a_restart(sim, tmp_path):
         await proxy.stop()
 
 
+async def test_ev_limits_end_when_a_car_is_plugged_in(setup):
+    """The Elli Charger 2 shows its own EV while a car is plugged in: old EV limits must go."""
+    import dataclasses
+
+    from pyeebus.usecases import PhaseLimit
+
+    sim, proxy, hems = setup
+    ev = await wait_for(lambda: hems._ev())
+    await hems._opev.write_load_control_limits(ev, [PhaseLimit(p, 0) for p in "abc"])
+    await wait_for(lambda: proxy.arbiter.effective() == 0)
+    with_car = dataclasses.replace(proxy.profile, entities=[*proxy.profile.entities,
+                                                            {"type": "EV", "address": [1, 1], "features": []}])
+    proxy._update_virtual_ev(with_car)
+    assert proxy.arbiter.effective() is None
+    assert proxy.hems.virtual_ev is None
+
+
+async def test_ev_limits_get_no_failsafe(setup):
+    from pyeebus.usecases import PhaseLimit
+
+    sim, proxy, hems = setup
+    await hems.set_failsafe(watts=0, duration=7200)
+    await wait_for(lambda: proxy._failsafe() == (0, 7200))
+    ev = await wait_for(lambda: hems._ev())
+    await hems._opev.write_load_control_limits(ev, [PhaseLimit(p, 10) for p in "abc"])
+    await wait_for(lambda: sim.limit == (6900, True))
+    await hems.stop()
+    await wait_for(lambda: f"{hems.our_ski}:ev" not in proxy.arbiter.limits)
+    assert proxy.arbiter.effective() is None
+
+
 async def test_no_virtual_ev_when_disabled(sim, tmp_path):
     proxy = make_proxy(tmp_path / "proxy", sim)
     proxy.virtual_ev_enabled = False

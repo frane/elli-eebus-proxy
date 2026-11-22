@@ -124,6 +124,8 @@ class Proxy:
         self._sniff = sniff or self.elli_ski is None
         self.virtual_ev_enabled = virtual_ev
         self.arbiter = LimitArbiter(self.state_dir / "limits.json")
+        self.arbiter.drop(":ev")  # EV current limits belong to an EV session; none survives a restart
+        self._wallbox_ev: bool | None = None  # the wallbox shows an EV itself (a car is plugged in)
         self.hems_identity = ShipIdentity.load_or_create(self.state_dir / "hems", NAME)
         self.hems_trust = TrustStore.load(self.state_dir / "hems" / "trust.json")
         self.elli: ElliEebus | None = None
@@ -498,6 +500,9 @@ class Proxy:
         if self.hems is None:
             return
         has_ev = any(e["type"] == "EV" for e in profile.entities)
+        if self._wallbox_ev is not None and has_ev != self._wallbox_ev:
+            self._drop_ev_limits()  # a car was plugged in or out: a new EV session
+        self._wallbox_ev = has_ev
         evse = next((e for e in profile.entities if e["type"] == "EVSE"), None)
         want = self.virtual_ev_enabled and not has_ev and evse is not None
         if want and self.hems.virtual_ev is None:
@@ -548,10 +553,13 @@ class Proxy:
         if self.sniff or what not in ("disconnected", "heartbeat_lost"):
             return
         watts, seconds = self._failsafe()
-        for key in (ski, f"{ski}:ev"):
-            if self.arbiter.lost(key, watts, seconds):
-                _LOGGER.warning("energy manager %s lost: failsafe limit %s W for %s s", ski[:8], watts, seconds)
-                self._wake()
+        if self.arbiter.lost(ski, watts, seconds):
+            _LOGGER.warning("energy manager %s lost: failsafe limit %s W for %s s", ski[:8], watts, seconds)
+            self._wake()
+        # EV current limits (OPEV) know no failsafe: they end with the energy manager
+        if self.arbiter.drop(f"{ski}:ev"):
+            _LOGGER.info("EV current limits of %s dropped: energy manager lost", ski[:8])
+            self._wake()
 
     # --- applying the limit to the wallbox ------------------------------------------------------------
 
