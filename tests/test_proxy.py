@@ -354,3 +354,16 @@ async def test_cached_profile_without_data_is_not_used(sim, tmp_path):
         assert again.profile.has_data()
     finally:
         await again.stop()
+
+
+async def test_energy_managers_reconnect_when_a_car_is_plugged_in(setup):
+    """thermondo/KeoApp reads the description once per connection: the EV the Elli Charger 2
+    shows for a plugged-in car would stay unknown to it (0 kW, no control) without a reconnect."""
+    sim, proxy, hems = setup
+    before = hems.service.node.connections.get(proxy.hems_ski)
+    assert before is not None
+    sim.device.add_entity("EV", (1, 1))
+    new = await wait_for(lambda: (c := hems.service.node.connections.get(proxy.hems_ski)) is not None
+                         and c is not before and c.is_complete and c, timeout=20)
+    assert new is not before
+    assert proxy.hems.virtual_ev is None

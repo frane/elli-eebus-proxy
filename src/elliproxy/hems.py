@@ -210,6 +210,13 @@ class HemsSide:
         if feature.data.get(function) != data:
             feature.set_data(function, data)
 
+    async def reconnect_managers(self, reason: str) -> None:
+        """Close the connections to the energy managers: they connect again and read the
+        description anew. Energy managers such as thermondo/KeoApp read it once per connection
+        and ignore later changes (an EV entity replaced while connected stays unknown to them)."""
+        for conn in list(self.service.node.connections.values()):
+            await conn.close(reason)
+
     def add_virtual_ev(self, **options: Any) -> VirtualEV:
         """Show energy managers an EV entity under the EVSE (the wallbox has none)."""
         self.virtual_ev = VirtualEV(self, **options)

@@ -74,7 +74,8 @@ MIRROR_CLIENT_FEATURES = ("Bill", "DeviceClassification", "DeviceConfiguration",
                           "Measurement", "Setpoint", "TimeSeries")
 RESEND_AFTER = 10.0  # s: don't repeat the same write while the wallbox has not reported it yet
 PROFILE_SAVE_INTERVAL = 300.0
-READ_WAIT = 10.0  # s to wait for the wallbox's data before describing new entities to energy managers
+READ_WAIT = 10.0
+RECONNECT_DELAY = 1.0  # after a description change, before energy managers are made to reconnect  # s to wait for the wallbox's data before describing new entities to energy managers
 MDNS_WAIT = 5.0  # s to wait for the wallbox's mDNS announcement before announcing ourselves
 
 
@@ -386,12 +387,20 @@ class Proxy:
                 _LOGGER.info("wallbox description changed, updating energy managers")
                 self._update_virtual_ev(profile)
                 self.hems.apply_structure(profile)
+                if self.hems.managers:
+                    _LOGGER.info("reconnecting energy managers so they read the new description")
+                    spawn(self._reconnect_managers())
             if old is not None and (old.identity != profile.identity or old.device_address != profile.device_address):
                 _LOGGER.warning("wallbox identity differs from the cached one (%s): restart the proxy to apply it",
                                 profile.identity)
             self.profile = profile
             self.hems.set_heartbeat(self.elli_online)
             self._save_profile(profile)
+
+    async def _reconnect_managers(self) -> None:
+        await asyncio.sleep(RECONNECT_DELAY)  # let the data of the new entities settle first
+        if self.hems is not None:
+            await self.hems.reconnect_managers("wallbox description changed")
 
     def _save_profile(self, profile: Profile | None = None) -> None:
         remote = self.elli._device() if self.elli else None

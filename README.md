@@ -4,7 +4,7 @@ An EEBUS proxy between energy managers (HEMS: Solar Manager / thermondo smart, H
 
 [Deutsch](README.de.md) · Built on [pyeebus](https://github.com/frane/pyeebus) and [elli-eebus](https://github.com/frane/elli-eebus)
 
-> **Status: 0.1.0.** In use with Solar Manager (thermondo smart) and an Elli Charger 2: pause, limits, full power and charging a car work.
+> **Status: 0.1.1.** In use with Solar Manager (thermondo smart) and an Elli Charger 2: pause, limits, full power and charging a car work.
 
 ## Background
 

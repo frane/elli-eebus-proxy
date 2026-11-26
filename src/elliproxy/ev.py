@@ -1,14 +1,15 @@
 """A virtual EV entity for energy managers that control wallboxes only through the EV.
 
 The Elli Charger 2 (current firmware) offers power limitation (LPC) on its
-EVSE entity but no EV entity. Energy managers such as Solar Manager control
+EVSE entity, and an EV entity only while a car is plugged in. Energy managers such as Solar Manager control
 wallboxes with the EV charging use cases instead: current limits per phase on
 the EV entity (OPEV: obligation, OSCEV: recommendation). The proxy shows them
 an EV entity ``[1, 1]`` under the EVSE and turns their current limits into a
 power limit for the wallbox (A x 230 V x phases).
 
-The Elli Charger 2 does not report whether a car is plugged in, so the EV
-entity is always there.
+This EV is shown while the wallbox shows none, so energy managers always see an
+EV. When the wallbox's own EV comes or goes, the energy managers are made to
+reconnect (see Proxy._sync): some read the description only once per connection.
 """
 
 from __future__ import annotations
